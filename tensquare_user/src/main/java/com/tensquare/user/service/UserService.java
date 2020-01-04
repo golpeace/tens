@@ -1,0 +1,268 @@
+package com.tensquare.user.service;
+
+import com.tensquare.user.dao.UserDao;
+import com.tensquare.user.pojo.User;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import util.IdWorker;
+
+import javax.persistence.criteria.CriteriaBuilder;
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 服务层
+ * 
+ * @author Administrator
+ *
+ */
+@Service
+public class UserService {
+
+	@Autowired
+	private UserDao userDao;
+	
+	@Autowired
+	private IdWorker idWorker;
+
+	@Autowired
+	private BCryptPasswordEncoder encoder;
+
+	/**
+	 * 查询全部列表
+	 * @return
+	 */
+	public List<User> findAll() {
+		return userDao.findAll();
+	}
+
+	
+	/**
+	 * 条件查询+分页
+	 * @param whereMap
+	 * @param page
+	 * @param size
+	 * @return
+	 */
+	public Page<User> findSearch(Map whereMap, int page, int size) {
+		Specification<User> specification = createSpecification(whereMap);
+		PageRequest pageRequest =  PageRequest.of(page-1, size);
+		return userDao.findAll(specification, pageRequest);
+	}
+
+	
+	/**
+	 * 条件查询
+	 * @param whereMap
+	 * @return
+	 */
+	public List<User> findSearch(Map whereMap) {
+		Specification<User> specification = createSpecification(whereMap);
+		return userDao.findAll(specification);
+	}
+
+	/**
+	 * 根据ID查询实体
+	 * @param id
+	 * @return
+	 */
+	public User findById(String id) {
+		return userDao.findById(id).get();
+	}
+
+	/**
+	 * 增加
+	 * @param user
+	 */
+	public void add(User user) {
+		user.setId( idWorker.nextId()+"" );
+		userDao.save(user);
+	}
+
+	/**
+	 * 修改
+	 * @param user
+	 */
+	public void update(User user) {
+		userDao.save(user);
+	}
+
+	/**
+	 * 删除
+	 * @param id
+	 */
+	public void deleteById(String id) {
+		userDao.deleteById(id);
+	}
+
+	/**
+	 * 动态条件构建
+	 * @param searchMap
+	 * @return
+	 */
+	private Specification<User> createSpecification(Map searchMap) {
+
+		return new Specification<User>() {
+
+			@Override
+			public Predicate toPredicate(Root<User> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
+				List<Predicate> predicateList = new ArrayList<Predicate>();
+                // ID
+                if (searchMap.get("id")!=null && !"".equals(searchMap.get("id"))) {
+                	predicateList.add(cb.like(root.get("id").as(String.class), "%"+(String)searchMap.get("id")+"%"));
+                }
+                // 手机号码
+                if (searchMap.get("mobile")!=null && !"".equals(searchMap.get("mobile"))) {
+                	predicateList.add(cb.like(root.get("mobile").as(String.class), "%"+(String)searchMap.get("mobile")+"%"));
+                }
+                // 密码
+                if (searchMap.get("password")!=null && !"".equals(searchMap.get("password"))) {
+                	predicateList.add(cb.like(root.get("password").as(String.class), "%"+(String)searchMap.get("password")+"%"));
+                }
+                // 昵称
+                if (searchMap.get("nickname")!=null && !"".equals(searchMap.get("nickname"))) {
+                	predicateList.add(cb.like(root.get("nickname").as(String.class), "%"+(String)searchMap.get("nickname")+"%"));
+                }
+                // 性别
+                if (searchMap.get("sex")!=null && !"".equals(searchMap.get("sex"))) {
+                	predicateList.add(cb.like(root.get("sex").as(String.class), "%"+(String)searchMap.get("sex")+"%"));
+                }
+                // 头像
+                if (searchMap.get("avatar")!=null && !"".equals(searchMap.get("avatar"))) {
+                	predicateList.add(cb.like(root.get("avatar").as(String.class), "%"+(String)searchMap.get("avatar")+"%"));
+                }
+                // E-Mail
+                if (searchMap.get("email")!=null && !"".equals(searchMap.get("email"))) {
+                	predicateList.add(cb.like(root.get("email").as(String.class), "%"+(String)searchMap.get("email")+"%"));
+                }
+                // 兴趣
+                if (searchMap.get("interest")!=null && !"".equals(searchMap.get("interest"))) {
+                	predicateList.add(cb.like(root.get("interest").as(String.class), "%"+(String)searchMap.get("interest")+"%"));
+                }
+                // 个性
+                if (searchMap.get("personality")!=null && !"".equals(searchMap.get("personality"))) {
+                	predicateList.add(cb.like(root.get("personality").as(String.class), "%"+(String)searchMap.get("personality")+"%"));
+                }
+				
+				return cb.and( predicateList.toArray(new Predicate[predicateList.size()]));
+
+			}
+		};
+
+	}
+
+	@Autowired
+	private RedisTemplate redisTemplate;
+
+	/**
+	 * 用户注册
+	 * @param user
+	 */
+	public void registry(User user,String code){
+//		//1.使用当前用户的手机号去查询，看看有没有被使用过
+//		User dbUser = userDao.findByMobile(user.getMobile());
+//		//2.判断dbuser是否为null
+//		if(dbUser != null){
+//			throw new RuntimeException("手机号已经被注册过了");
+//		}
+//		//3.校验验证码：从浏览器传过来的和redis中的比较
+//		if(StringUtils.isEmpty(code)){
+//			throw new RuntimeException("请输入验证码");
+//		}
+//		String redisCode = (String)redisTemplate.opsForValue().get("code_"+user.getMobile());
+//
+//		if(!code.equals(redisCode)){
+//			throw new RuntimeException("验证码有误");
+//		}
+
+		//4.手机号没被用过，验证码也验证通过，把用户信息存入数据库
+		user.setId(String.valueOf(idWorker.nextId()));
+		user.setFollowcount(0);//关注数
+		user.setFanscount(0);//粉丝数
+		user.setOnline(0L);//在线时长
+		user.setRegdate(new Date());//注册日期
+		user.setUpdatedate(new Date());//更新日期
+		user.setLastdate(new Date());//最后登陆日期
+
+		//设置加密密码
+		String bCryptPassword = encoder.encode(user.getPassword());
+		user.setPassword(bCryptPassword);
+		userDao.save(user);
+	}
+
+	@Autowired
+	private RabbitTemplate rabbitTemplate;
+
+	/**
+	 * 生成验证码
+	 * 	验证码是一个6位的随机数
+	 * @param mobile
+	 */
+	public void generateCode(String mobile){
+		//1.生成6位随机数
+		Random random = new Random();
+		Integer code = random.nextInt(999999);
+		//2.解决不足6位问题
+		if(code < 100000){
+			code = code + 100000;
+		}
+		System.out.println("验证码是："+code);
+		//3.往队列中写入消息
+		Map<String,String> map = new HashMap<>();
+		map.put("mobile",mobile);
+		map.put("code",code.toString());
+		rabbitTemplate.convertAndSend("tensquare",map);
+		//4.把验证码存入redis
+		redisTemplate.opsForValue().set("code_"+mobile,code.toString(),10, TimeUnit.MINUTES);
+	}
+
+	/**
+	 * 用户登录
+	 * @return
+	 */
+	public User userLogin(String mobile,String password){
+		//1.使用手机号查询用户
+		User user = userDao.findByMobile(mobile);
+		//2.判断用户是否存在
+		if(user == null){
+			throw new RuntimeException("用户不存在，或者密码错误！");
+		}
+		//3.校验密码
+		boolean checkPassword = encoder.matches(password,user.getPassword());
+		if(!checkPassword){
+			throw new RuntimeException("用户不存在，或者密码错误！");
+		}
+		//4.返回
+		return user;
+	}
+
+	/**
+	 * 更新关注数
+	 * @param userid
+	 * @param followcount
+	 */
+	@Transactional
+	public void updateFollowCount(String userid,int followcount){
+		userDao.updateFollowCount(userid,followcount);
+	}
+
+	/**
+	 * 更新粉丝数
+	 * @param userid
+	 * @param fanscount
+	 */
+	@Transactional
+	public void updateFansCount(String userid,int fanscount){
+		userDao.updateFansCount(userid,fanscount);
+	}
+}
